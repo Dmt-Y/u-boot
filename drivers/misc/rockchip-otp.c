@@ -27,6 +27,23 @@
 #define OTPC_SBPI_CMD0_OFFSET		0x1000
 #define OTPC_SBPI_CMD1_OFFSET		0x1004
 
+#define OTPC_MODE_CTRL			0x2000
+#define OTPC_IRQ_ST			0x2008
+#define OTPC_ACCESS_ADDR		0x200c
+#define OTPC_RD_DATA			0x2010
+#define OTPC_REPR_RD_TRANS_NUM		0x2020
+
+#define OTPC_DEEP_STANDBY		0x0
+#define OTPC_STANDBY			0x1
+#define OTPC_ACTIVE			0x2
+#define OTPC_READ_ACCESS		0x3
+#define OTPC_TRANS_NUM			0x1
+#define OTPC_RDM_IRQ_ST			BIT(0)
+#define OTPC_STB2ACT_IRQ_ST		BIT(7)
+#define OTPC_DP2STB_IRQ_ST		BIT(8)
+#define OTPC_ACT2STB_IRQ_ST		BIT(9)
+#define OTPC_STB2DP_IRQ_ST		BIT(10)
+
 /* OTP Register bits and masks */
 #define OTPC_USER_ADDR_MASK		GENMASK(31, 16)
 #define OTPC_USE_USER			BIT(0)
@@ -149,6 +166,66 @@ static int rockchip_otp_ecc_enable(struct rockchip_otp_plat *otp, bool enable)
 	return rockchip_otp_poll_timeout(otp, OTPC_SBPI_DONE, OTPC_INT_STATUS);
 }
 
+static int rockchip_otp_active(struct rockchip_otp_plat *otp)
+{
+	int ret = 0;
+	u32 mode;
+
+	mode = readl(otp->base + OTPC_MODE_CTRL);
+
+	switch (mode) {
+	case OTPC_DEEP_STANDBY:
+		writel(OTPC_STANDBY, otp->base + OTPC_MODE_CTRL);
+		ret = rockchip_otp_poll_timeout(otp, OTPC_DP2STB_IRQ_ST,
+						OTPC_IRQ_ST);
+		if (ret)
+			return ret;
+	fallthrough;
+	case OTPC_STANDBY:
+		writel(OTPC_ACTIVE, otp->base + OTPC_MODE_CTRL);
+		ret = rockchip_otp_poll_timeout(otp, OTPC_STB2ACT_IRQ_ST,
+						OTPC_IRQ_ST);
+		if (ret)
+			return ret;
+
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
+static int rockchip_otp_standby(struct rockchip_otp_plat *otp)
+{
+	int ret = 0;
+	u32 mode;
+
+	mode = readl(otp->base + OTPC_MODE_CTRL);
+
+	switch (mode) {
+	case OTPC_ACTIVE:
+		writel(OTPC_STANDBY, otp->base + OTPC_MODE_CTRL);
+		ret = rockchip_otp_poll_timeout(otp, OTPC_ACT2STB_IRQ_ST,
+						OTPC_IRQ_ST);
+		if (ret)
+			return ret;
+	fallthrough;
+	case OTPC_STANDBY:
+		writel(OTPC_DEEP_STANDBY, otp->base + OTPC_MODE_CTRL);
+		ret = rockchip_otp_poll_timeout(otp, OTPC_STB2DP_IRQ_ST,
+						OTPC_IRQ_ST);
+		if (ret)
+			return ret;
+
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 static int rockchip_px30_otp_read(struct udevice *dev, int offset,
 				  void *buf, int size)
 {
@@ -180,6 +257,35 @@ static int rockchip_px30_otp_read(struct udevice *dev, int offset,
 read_end:
 	writel(0x0 | OTPC_USE_USER_MASK, otp->base + OTPC_USER_CTRL);
 
+	return ret;
+}
+
+static int rockchip_rk3308bs_otp_read(struct udevice *dev, int offset,
+				      void *buf, int size)
+{
+	struct rockchip_otp_plat *otp = dev_get_plat(dev);
+	u32 *buffer = buf;
+	int ret;
+
+	ret = rockchip_otp_active(otp);
+	if (ret)
+		goto out;
+
+	while (size--) {
+		writel(OTPC_TRANS_NUM, otp->base + OTPC_REPR_RD_TRANS_NUM);
+		writel(offset++, otp->base + OTPC_ACCESS_ADDR);
+		writel(OTPC_READ_ACCESS, otp->base + OTPC_MODE_CTRL);
+		ret = rockchip_otp_poll_timeout(otp, OTPC_RDM_IRQ_ST,
+						OTPC_IRQ_ST);
+		if (ret)
+			goto read_end;
+
+		*buffer++ = readl(otp->base + OTPC_RD_DATA);
+	}
+
+read_end:
+	rockchip_otp_standby(otp);
+out:
 	return ret;
 }
 
@@ -355,6 +461,12 @@ static const struct rockchip_otp_data px30_data = {
 	.size = 0x40,
 };
 
+static const struct rockchip_otp_data rk3308bs_data = {
+	.read = rockchip_rk3308bs_otp_read,
+	.size = 0x80,
+	.block_size = 4,
+};
+
 static const struct rockchip_otp_data rk3568_data = {
 	.read = rockchip_rk3568_otp_read,
 	.size = 0x80,
@@ -382,6 +494,10 @@ static const struct udevice_id rockchip_otp_ids[] = {
 	{
 		.compatible = "rockchip,rk3308-otp",
 		.data = (ulong)&px30_data,
+	},
+	{
+		.compatible = "rockchip,rk3308bs-otp",
+		.data = (ulong)&rk3308bs_data,
 	},
 	{
 		.compatible = "rockchip,rk3568-otp",
