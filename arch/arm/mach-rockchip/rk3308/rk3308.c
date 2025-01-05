@@ -191,6 +191,9 @@ int arch_cpu_init(void)
 	static struct rk3308_sgrf * const sgrf = (void *)SGRF_BASE;
 	static struct rk3308_grf * const grf = (void *)GRF_BASE;
 
+	/* Set OTP readable for rk3308bs revision */
+	rk_clrreg(&sgrf->soc_con1, BIT(2));
+
 	/* Set CRYPTO SDMMC EMMC NAND SFC USB master bus to be secure access */
 	rk_clrreg(&sgrf->con_secure0, 0x2b83);
 
@@ -232,3 +235,34 @@ int checkboard(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_OF_BOARD_FIXUP
+int board_fix_fdt(void *rw_fdt_blob)
+{
+	int off;
+	const char *soc_otp_compat = "rockchip,rk3308-otp";
+	u32 chip_id = readl(RK3308_GRF_CHIP_ID);
+
+	/* Change otp compatible only for RK3308B-S SoC revision. */
+	if (chip_id != 0x3308c)
+		return 0;
+
+	off = fdt_node_offset_by_compatible(rw_fdt_blob, -1,
+		soc_otp_compat);
+	if (off < 0) {
+		printf("WARNING: could not find compatible node %s\n",
+			soc_otp_compat);
+		return off;
+	}
+
+	off = fdt_setprop_string(rw_fdt_blob, off, "compatible",
+		"rockchip,rk3308bs-otp");
+	if (off < 0) {
+		printf("WARNING: could not set compatible for otp node: %s\n",
+			fdt_strerror(off));
+		return off;
+	}
+
+	return 0;
+}
+#endif
