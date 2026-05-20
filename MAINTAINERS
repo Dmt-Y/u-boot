@@ -1269,6 +1269,11 @@ F:	tools/fwumdata_src/fwumdata.c
 F:	tools/fwumdata_src/fwumdata.h
 F:	tools/fwumdata_src/mkfwumdata.c
 
+GATED FIXED-RATE CLOCK DRIVER
+M:	Daniele Briguglio <hello@superkali.me>
+S:	Maintained
+F:	drivers/clk/clk-gated-fixed.c
+
 GATEWORKS_SC
 M:	Tim Harvey <tharvey@gateworks.com>
 S:	Maintained

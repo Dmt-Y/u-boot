@@ -94,6 +94,15 @@ config CLK_COMPOSITE_CCF
 	  Enable this option if you want to (re-)use the Linux kernel's Common
 	  Clock Framework [CCF] composite code in U-Boot's clock driver.
 
+config CLK_GATED_FIXED
+	bool "Regulator-gated fixed-rate clock driver"
+	depends on CLK && DM_REGULATOR
+	help
+	  Enable this option to add a driver for fixed-rate clocks whose
+	  output is gated by a regulator supply, described in the device
+	  tree with the "gated-fixed-clock" compatible.  Typical use is
+	  external PCIe reference clock generators on Rockchip boards.
+
 config CLK_GPIO
 	bool "GPIO-controlled clock gate driver"
 	depends on CLK
