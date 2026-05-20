@@ -307,10 +307,16 @@ static int rockchip_pcie_init_port(struct udevice *dev)
 		return ret;
 	}
 
+	ret = clk_enable_bulk(&priv->clks);
+	if (ret) {
+		dev_err(dev, "failed to enable clks (ret=%d)\n", ret);
+		goto err_disable_regulator;
+	}
+
 	ret = generic_phy_init(&priv->phy);
 	if (ret) {
 		dev_err(dev, "failed to init phy (ret=%d)\n", ret);
-		goto err_disable_regulator;
+		goto err_disable_clks;
 	}
 
 	ret = generic_phy_power_on(&priv->phy);
@@ -325,12 +331,6 @@ static int rockchip_pcie_init_port(struct udevice *dev)
 		goto err_power_off_phy;
 	}
 
-	ret = clk_enable_bulk(&priv->clks);
-	if (ret) {
-		dev_err(dev, "failed to enable clks (ret=%d)\n", ret);
-		goto err_deassert_bulk;
-	}
-
 	/* LTSSM EN ctrl mode */
 	val = rk_pcie_readl_apb(priv, PCIE_CLIENT_HOT_RESET_CTRL);
 	val |= PCIE_LTSSM_ENABLE_ENHANCE | (PCIE_LTSSM_ENABLE_ENHANCE << 16);
@@ -342,17 +342,17 @@ static int rockchip_pcie_init_port(struct udevice *dev)
 
 	ret = rk_pcie_link_up(priv);
 	if (ret < 0)
-		goto err_link_up;
+		goto err_deassert_bulk;
 
 	return 0;
-err_link_up:
-	clk_disable_bulk(&priv->clks);
 err_deassert_bulk:
 	reset_assert_bulk(&priv->rsts);
 err_power_off_phy:
 	generic_phy_power_off(&priv->phy);
 err_exit_phy:
 	generic_phy_exit(&priv->phy);
+err_disable_clks:
+	clk_disable_bulk(&priv->clks);
 err_disable_regulator:
 	regulator_set_enable_if_allowed(priv->vpcie3v3, false);
 
