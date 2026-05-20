@@ -425,7 +425,7 @@ static int rockchip_pcie_parse_dt(struct udevice *dev)
 rockchip_pcie_parse_dt_err_phy_get_by_index:
 	/* regulators don't need release */
 rockchip_pcie_parse_dt_err_supply_regulator:
-	clk_release_bulk(&priv->clks);
+	/* clocks don't need release */
 rockchip_pcie_parse_dt_err_clk_get_bulk:
 	reset_release_bulk(&priv->rsts);
 rockchip_pcie_parse_dt_err_reset_get_bulk:
@@ -476,7 +476,6 @@ static int rockchip_pcie_probe(struct udevice *dev)
 		return ret;
 
 rockchip_pcie_probe_err_init_port:
-	clk_release_bulk(&priv->clks);
 	reset_release_bulk(&priv->rsts);
 	dm_gpio_free(dev, &priv->rst_gpio);
 
